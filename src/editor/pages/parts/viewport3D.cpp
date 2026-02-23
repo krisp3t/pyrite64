@@ -169,6 +169,10 @@ Editor::Viewport3D::Viewport3D()
 }
 
 Editor::Viewport3D::~Viewport3D() {
+  if (isMouseCaptured) {
+    resetCapture();
+  }
+
   ctx.scene->removeRenderPass(passId);
   ctx.scene->removeCopyPass(passId);
   ctx.scene->removePostRenderCallback(passId);
@@ -267,7 +271,10 @@ void Editor::Viewport3D::draw()
   camera.update();
 
   auto scene = ctx.project->getScenes().getLoadedScene();
-  if (!scene)return;
+  if (!scene) {
+    resetCapture();
+    return;
+  }
 
   ctx.scene->clearLights();
   auto &rootObj = scene->getRootObject();
@@ -310,7 +317,8 @@ void Editor::Viewport3D::draw()
 
   // mouse pos
   ImVec2 screenPos = ImGui::GetCursorScreenPos();
-  mousePos = {ImGui::GetMousePos().x, ImGui::GetMousePos().y};
+  ImVec2 mousePosAbs = ImGui::GetMousePos();
+  mousePos = {mousePosAbs.x, mousePosAbs.y};
   mousePos.x -= screenPos.x;
   mousePos.y -= vpOffsetY;
 
@@ -318,6 +326,7 @@ void Editor::Viewport3D::draw()
 
   bool mouseHeldRight = ImGui::IsMouseDown(ImGuiMouseButton_Right);
   bool mouseHeldMiddle = ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+  bool cameraMouseHeld = mouseHeldRight || mouseHeldMiddle;
   bool newMouseDown = mouseHeldMiddle || mouseHeldRight;
   bool isShiftDown = ImGui::GetIO().KeyShift;
   if(isShiftDown)moveSpeed *= 4.0f;
@@ -329,11 +338,47 @@ void Editor::Viewport3D::draw()
     mousePosClick = mousePos;
   }
 
-  if(isMouseHover)
-  {
+  if(isMouseHover) {
     ImGui::SetMouseCursor(
-      mouseHeldRight ? ImGuiMouseCursor_None : ImGuiMouseCursor_Arrow
+      (mouseHeldRight || isMouseCaptured) ? ImGuiMouseCursor_None : ImGuiMouseCursor_Arrow
     );
+  }
+
+  bool startMouseCapture =
+    isMouseHover &&
+    !ImViewGuizmo::IsOver() &&
+    (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsMouseClicked(ImGuiMouseButton_Middle));
+  bool justStartedCapture = false;
+  if (startMouseCapture && !isMouseCaptured) {
+    // Capture only if relative mode can be enabled.
+    if (SDL_SetWindowRelativeMouseMode(ctx.window, true)) {
+      isMouseCaptured = true;
+      isMouseRelativeMode = true;
+      justStartedCapture = true;
+      mouseRotDelta = {0,0};
+      mouseMoveDelta = {0,0};
+      float relX = 0.0f;
+      float relY = 0.0f;
+      SDL_GetRelativeMouseState(&relX, &relY);
+    }
+  }
+  glm::vec2 capturedFrameDelta{0,0};
+  if (isMouseCaptured) {
+    if (!cameraMouseHeld) {
+      resetCapture();
+    } else {
+      if (!isMouseDown) {
+        mousePosStart = mousePos;
+      }
+      isMouseDown = true;
+
+      float relX = 0.0f;
+      float relY = 0.0f;
+      SDL_GetRelativeMouseState(&relX, &relY);
+      if (!justStartedCapture) {
+        capturedFrameDelta = {relX, relY};
+      }
+    }
   }
 
   if(!ImGui::GetIO().WantTextInput)
@@ -389,7 +434,6 @@ void Editor::Viewport3D::draw()
       mousePosStart = mousePos;
     }
     isMouseDown = newMouseDown;
-    isMouseDown = newMouseDown;
   }
 
   currPos = ImGui::GetCursorPos();
@@ -439,10 +483,20 @@ void Editor::Viewport3D::draw()
   if (isMouseDown) {
     if (mouseHeldMiddle) {
       camera.stopRotateDelta();
-      camera.moveDelta(-dragDelta * 3.0f);
+      if (isMouseCaptured) {
+        mouseMoveDelta += capturedFrameDelta;
+        camera.moveDelta(-mouseMoveDelta * 3.0f);
+      } else {
+        camera.moveDelta(-dragDelta * 3.0f);
+      }
     } else if (mouseHeldRight) {
       camera.stopMoveDelta();
-      camera.rotateDelta(dragDelta);
+      if (isMouseCaptured) {
+        mouseRotDelta += capturedFrameDelta;
+        camera.rotateDelta(mouseRotDelta);
+      } else {
+        camera.rotateDelta(dragDelta);
+      }
     }
   } else {
     camera.stopRotateDelta();
@@ -571,4 +625,18 @@ void Editor::Viewport3D::draw()
       camera.posOffset = glm::normalize(camera.posOffset) * camDist;
     }
   }
+}
+
+void Editor::Viewport3D::resetCapture()
+{
+  if (!isMouseCaptured) return;
+  if (isMouseRelativeMode) {
+    SDL_SetWindowRelativeMouseMode(ctx.window, false);
+    isMouseRelativeMode = false;
+  }
+  isMouseCaptured = false;
+  mouseRotDelta = {0,0};
+  mouseMoveDelta = {0,0};
+  camera.stopRotateDelta();
+  camera.stopMoveDelta();
 }

@@ -24,12 +24,16 @@ namespace Editor
 
       bool isMouseHover{false};
       bool isMouseDown{false};
+      bool isMouseCaptured{false};
+      bool isMouseRelativeMode{false};
       Utils::RequestVal<uint32_t> pickedObjID{};
 
       float vpOffsetY{};
       glm::vec2 mousePos{};
       glm::vec2 mousePosStart{};
       glm::vec2 mousePosClick{};
+      glm::vec2 mouseRotDelta{};
+      glm::vec2 mouseMoveDelta{};
 
       std::shared_ptr<Renderer::Mesh> meshGrid{};
       Renderer::Object objGrid{};
@@ -64,5 +68,6 @@ namespace Editor
       }
 
       void draw();
+      void resetCapture();
   };
 }
