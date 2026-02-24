@@ -350,11 +350,20 @@ void Editor::Viewport3D::draw()
     (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsMouseClicked(ImGuiMouseButton_Middle));
   bool justStartedCapture = false;
   if (startMouseCapture && !isMouseCaptured) {
+    float startWindowX = 0.0f;
+    float startWindowY = 0.0f;
+    float startGlobalX = 0.0f;
+    float startGlobalY = 0.0f;
+    SDL_GetMouseState(&startWindowX, &startWindowY);
+    SDL_GetGlobalMouseState(&startGlobalX, &startGlobalY);
+
     // Capture only if relative mode can be enabled.
     if (SDL_SetWindowRelativeMouseMode(ctx.window, true)) {
       isMouseCaptured = true;
       isMouseRelativeMode = true;
       justStartedCapture = true;
+      mouseCaptureStartWindow = {startWindowX, startWindowY};
+      mouseCaptureStartGlobal = {startGlobalX, startGlobalY};
       mouseRotDelta = {0,0};
       mouseMoveDelta = {0,0};
       float relX = 0.0f;
@@ -630,9 +639,17 @@ void Editor::Viewport3D::draw()
 void Editor::Viewport3D::resetCapture()
 {
   if (!isMouseCaptured) return;
+  const bool shouldRestoreCursor =
+    (SDL_GetMouseFocus() == ctx.window) || (SDL_GetKeyboardFocus() == ctx.window);
+
   if (isMouseRelativeMode) {
     SDL_SetWindowRelativeMouseMode(ctx.window, false);
     isMouseRelativeMode = false;
+  }
+  if (shouldRestoreCursor) {
+    if (!SDL_WarpMouseGlobal(mouseCaptureStartGlobal.x, mouseCaptureStartGlobal.y)) {
+      SDL_WarpMouseInWindow(ctx.window, mouseCaptureStartWindow.x, mouseCaptureStartWindow.y);
+    }
   }
   isMouseCaptured = false;
   mouseRotDelta = {0,0};

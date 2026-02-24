@@ -32,6 +32,8 @@ namespace Editor
       glm::vec2 mousePos{};
       glm::vec2 mousePosStart{};
       glm::vec2 mousePosClick{};
+      glm::vec2 mouseCaptureStartWindow{};
+      glm::vec2 mouseCaptureStartGlobal{};
       glm::vec2 mouseRotDelta{};
       glm::vec2 mouseMoveDelta{};
 
