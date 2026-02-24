@@ -318,9 +318,21 @@ void Editor::Viewport3D::draw()
   // mouse pos
   ImVec2 screenPos = ImGui::GetCursorScreenPos();
   ImVec2 mousePosAbs = ImGui::GetMousePos();
+  ImVec2 viewportPos = {screenPos.x, screenPos.y + BAR_HEIGHT};
   mousePos = {mousePosAbs.x, mousePosAbs.y};
   mousePos.x -= screenPos.x;
   mousePos.y -= vpOffsetY;
+
+  ImVec2 mainViewportPos = ImGui::GetMainViewport()->Pos;
+  constexpr int CAPTURE_RECT_MARGIN = 6;
+  SDL_Rect viewportMouseRect{
+    (int)(viewportPos.x - mainViewportPos.x) + CAPTURE_RECT_MARGIN,
+    (int)(viewportPos.y - mainViewportPos.y) + CAPTURE_RECT_MARGIN,
+    (int)currSize.x - CAPTURE_RECT_MARGIN * 2,
+    (int)currSize.y - CAPTURE_RECT_MARGIN * 2
+  };
+  if (viewportMouseRect.w < 1) viewportMouseRect.w = 1;
+  if (viewportMouseRect.h < 1) viewportMouseRect.h = 1;
 
   float moveSpeed = 120.0f * deltaTime;
 
@@ -357,18 +369,23 @@ void Editor::Viewport3D::draw()
     SDL_GetMouseState(&startWindowX, &startWindowY);
     SDL_GetGlobalMouseState(&startGlobalX, &startGlobalY);
 
-    // Capture only if relative mode can be enabled.
+    // Capture only if relative mode and window grab can be enabled.
     if (SDL_SetWindowRelativeMouseMode(ctx.window, true)) {
-      isMouseCaptured = true;
-      isMouseRelativeMode = true;
-      justStartedCapture = true;
-      mouseCaptureStartWindow = {startWindowX, startWindowY};
-      mouseCaptureStartGlobal = {startGlobalX, startGlobalY};
-      mouseRotDelta = {0,0};
-      mouseMoveDelta = {0,0};
-      float relX = 0.0f;
-      float relY = 0.0f;
-      SDL_GetRelativeMouseState(&relX, &relY);
+      if (SDL_SetWindowMouseGrab(ctx.window, true)) {
+        isMouseCaptured = true;
+        isMouseRelativeMode = true;
+        justStartedCapture = true;
+        mouseCaptureStartWindow = {startWindowX, startWindowY};
+        mouseCaptureStartGlobal = {startGlobalX, startGlobalY};
+        mouseRotDelta = {0,0};
+        mouseMoveDelta = {0,0};
+        SDL_SetWindowMouseRect(ctx.window, &viewportMouseRect);
+        float relX = 0.0f;
+        float relY = 0.0f;
+        SDL_GetRelativeMouseState(&relX, &relY);
+      } else {
+        SDL_SetWindowRelativeMouseMode(ctx.window, false);
+      }
     }
   }
   glm::vec2 capturedFrameDelta{0,0};
@@ -376,6 +393,8 @@ void Editor::Viewport3D::draw()
     if (!cameraMouseHeld) {
       resetCapture();
     } else {
+      // Keep confinement synced in case the viewport moves/resizes while captured.
+      SDL_SetWindowMouseRect(ctx.window, &viewportMouseRect);
       if (!isMouseDown) {
         mousePosStart = mousePos;
       }
@@ -646,6 +665,8 @@ void Editor::Viewport3D::resetCapture()
     SDL_SetWindowRelativeMouseMode(ctx.window, false);
     isMouseRelativeMode = false;
   }
+  SDL_SetWindowMouseGrab(ctx.window, false);
+  SDL_SetWindowMouseRect(ctx.window, nullptr);
   if (shouldRestoreCursor) {
     if (!SDL_WarpMouseGlobal(mouseCaptureStartGlobal.x, mouseCaptureStartGlobal.y)) {
       SDL_WarpMouseInWindow(ctx.window, mouseCaptureStartWindow.x, mouseCaptureStartWindow.y);
